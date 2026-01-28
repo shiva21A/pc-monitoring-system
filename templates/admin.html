@@ -1,0 +1,23 @@
+
+
+
+
+
+
+
+<h1>ADMIN-DASHBOARD</h1>
+
+
+<table border="1">
+<tr>
+<th>Email</th><th>CPU</th><th>RAM</th><th>Battery</th><th>IP</th><th>Device</th><th>Last Seen</th>
+</tr>
+
+{% for u in users %}
+<tr>
+<td>{{u[0]}}</td><td>{{u[1]}}</td><td>{{u[2]}}</td>
+<td>{{u[3]}}</td><td>{{u[4]}}</td><td>{{u[5]}}</td><td>{{u[6]}}</td>
+</tr>
+{% endfor %}
+</table>
+

@@ -1,0 +1,310 @@
+from flask import Flask, render_template, request, redirect, session, flash
+import sqlite3, random, time
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, request, session, render_template, redirect, flash
+
+import random
+import time
+import smtplib
+from email.mime.text import MIMEText
+from flask import Flask, request, jsonify, render_template, redirect, session
+import sqlite3
+import uuid
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import send_from_directory
+import os
+
+
+app = Flask(__name__)
+app.secret_key = "pc-monitoring-secret"
+
+EMAIL_ADDRESS = "tyyggg412@gmail.com"
+EMAIL_PASSWORD = "bwuv cblm gzpy ncvx"
+
+# ---------- DATABASE INIT ----------
+def init_db():
+    conn = sqlite3.connect("database.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        email TEXT,
+        api_key TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS pc_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        api_key TEXT,
+        cpu REAL,
+        ram REAL,
+        battery INTEGER,
+        ip TEXT,
+        brand TEXT,
+        last_seen TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+
+def send_otp(email):
+    otp = str(random.randint(100000, 999999))
+    expiry = int(time.time()) + 600   # 10 minutes
+
+    msg = MIMEText(f"Your OTP is {otp}\nValid for 10 minutes")
+    msg["Subject"] = "OTP Verification"
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = email
+
+    server = smtplib.SMTP("smtp.gmail.com", 587)
+    server.starttls()
+    server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+    server.send_message(msg)
+    server.quit()
+
+    return otp, expiry
+
+#-------register-----
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        action = request.form.get("action")
+        email = request.form.get("email")
+
+        # ---------- SEND OTP ----------
+        if action == "send_otp":
+            otp, expiry = send_otp(email)
+
+            session["reg_email"] = email
+            session["reg_otp"] = otp
+            session["reg_expiry"] = expiry
+
+            flash("OTP sent successfully", "success")
+            return render_template("register.html", show_form=True)
+
+        # ---------- VERIFY OTP & REGISTER ----------
+        if action == "verify":
+            user_otp = request.form.get("otp")
+            password = request.form.get("password")
+            confirm = request.form.get("confirm")
+
+            if password != confirm:
+                flash("Passwords do not match", "error")
+                return render_template("register.html", show_form=True)
+
+            if time.time() > session.get("reg_expiry", 0):
+                flash("OTP expired", "error")
+                return render_template("register.html", show_form=True)
+
+            if user_otp != session.get("reg_otp"):
+                flash("Invalid OTP", "error")
+                return render_template("register.html", show_form=True)
+
+            hashed = generate_password_hash(password)
+            api_key = str(uuid.uuid4())
+
+            conn = sqlite3.connect("database.db")
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO users (email, password, api_key) VALUES (?, ?, ?)",
+                (session["reg_email"], hashed, api_key)
+            )
+            conn.commit()
+
+            cur.execute("SELECT id FROM users WHERE email = ?", (session["reg_email"],))
+            user = cur.fetchone()
+            conn.close()
+
+            session["user_id"] = user[0]
+
+            flash("Registration successful", "success")
+            return redirect("/dashboard")
+
+    return render_template("register.html")
+
+
+# ---------- LOGIN USER -----
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect("database.db")
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT id, password, api_key, is_admin FROM users WHERE email = ?",
+            (email,)
+        )
+
+        user = cur.fetchone()
+        conn.close()
+
+        if user is None:
+            return render_template("login.html", error="Invalid email or password")
+
+        if check_password_hash(user[1], password):
+            session["user_id"] = user[0]
+            session["api_key"] = user[2]
+            session["is_admin"] = user[3]
+
+            if user[3] == 1:
+                return redirect("/admin")
+            else:
+                return redirect("/dashboard")
+
+        return render_template("login.html", error="Invalid email or password")
+
+    return render_template("login.html")
+
+#--------logout
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+
+
+# ---------- RECEIVE PC DATA ----------
+@app.route("/api/update", methods=["POST"])
+def update_pc():
+    data = request.json
+
+    conn = sqlite3.connect("database.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO pc_stats (api_key, cpu, ram, battery, ip, brand, last_seen)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        data["api_key"],
+        data["cpu"],
+        data["ram"],
+        data["battery"],
+        data["ip"],
+        data["brand"],
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "ok"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+from flask import render_template
+import sqlite3
+
+#--------dashboard------
+@app.route("/dashboard")
+def dashboard():
+    if "api_key" not in session:
+        return redirect("/login")
+
+    api_key = session["api_key"]
+
+    conn = sqlite3.connect("database.db")
+    conn.row_factory = sqlite3.Row
+
+    pcs = conn.execute("""
+        SELECT cpu, ram, battery, ip, brand, last_seen
+        FROM pc_stats
+        WHERE api_key = ?
+        ORDER BY id DESC
+    """, (api_key,)).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "dashboard.html",
+        pcs=pcs,
+        api_key=api_key
+    )
+
+
+
+#---------admin dashboard------>
+
+@app.route("/admin")
+def admin_dashboard():
+    if not session.get("user_id"):
+        return redirect("/login")
+
+    conn = sqlite3.connect("database.db")
+    cur = conn.cursor()
+
+    # ✅ Check admin
+    cur.execute(
+        "SELECT is_admin FROM users WHERE id = ?",
+        (session["user_id"],)
+    )
+    admin = cur.fetchone()
+
+    if not admin or admin[0] != 1:
+        conn.close()
+        return "Access Denied", 403
+
+    # ✅ Latest PC stats per user
+    cur.execute("""
+SELECT 
+    u.email,
+    p.cpu,
+    p.ram,
+    p.battery,
+    p.ip,
+    p.brand,
+    p.last_seen
+FROM pc_stats p
+JOIN users u ON u.api_key = p.api_key
+WHERE u.is_admin = 0
+  AND p.id IN (
+      SELECT MAX(id)
+      FROM pc_stats
+      GROUP BY api_key
+  )
+ORDER BY p.last_seen DESC
+""")
+
+
+    data = cur.fetchall()
+    conn.close()
+
+    return render_template("admin.html", data=data)
+
+#------home-------
+
+@app.route("/")
+def home():
+    if "user_id" in session:
+        return redirect("/dashboard")
+    return render_template("home.html")
+
+
+
+#--------agent file-----
+
+from flask import send_from_directory
+import os
+
+@app.route("/download/agent")
+def download_agent():
+    agent_dir = os.path.join(app.root_path, "agent")
+    return send_from_directory(
+        agent_dir,
+        "agent.py",
+        as_attachment=True
+    )
+

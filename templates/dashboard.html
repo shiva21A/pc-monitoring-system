@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="refresh" content="10">
+
+    <title>User Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<hr>
+
+<button onclick="document.getElementById('pc-data').scrollIntoView();">
+  📊 View My PC Data
+</button>
+
+
+
+</head>
+<body>
+
+
+
+
+
+<h1>User Dashboard</h1>
+
+<hr>
+
+
+<h3>📥 Download PC Monitoring Agent</h3>
+
+<a href="/download/agent">
+    <button>Download agent.py</button>
+</a>
+
+<h2 id="pc-data">📊 My PC Monitoring Data</h2>
+
+<p><strong>Your API Key:</strong></p>
+<pre>{{ api_key }}</pre>
+
+
+<p>Copy this API key and paste it into the agent file.</p>
+
+<pre style="background:#eee;padding:10px;">{{ api_key }}</pre>
+
+<hr>
+
+<h2>🖥️ How to Setup PC Monitoring (Windows)</h2>
+
+<ol>
+    <li>Download the PC Monitoring agent file</li>
+    <li>Open <b>agent.py</b> using Notepad</li>
+    <li>Find this line:
+        <pre>API_KEY = "YOUR_API_KEY"</pre>
+    </li>
+    <li>Replace <b>YOUR_API_KEY</b> with your API key shown above</li>
+    <li>Save the file</li>
+    <li>Open Command Prompt in that folder</li>
+    <li>Run this command:
+        <pre>python agent.py</pre>
+    </li>
+    <li>Keep the agent running</li>
+</ol>
+
+<hr>
+
+<h2>🔒 Logout</h2>
+<a href="/logout">
+    <button>Logout</button>
+</a>
+
+</body>
+</html>
+
+<hr>
+
+<h2>🖥 My PC Monitoring Data</h2>
+
+{% if pcs and pcs|length > 0 %}
+<table border="1" cellpadding="8">
+    <tr>
+        <th>CPU (%)</th>
+        <th>RAM (%)</th>
+        <th>Battery</th>
+        <th>IP</th>
+        <th>Brand</th>
+        <th>Last Seen</th>
+    </tr>
+
+    {% for pc in pcs %}
+    <tr>
+        <td>{{ pc.cpu }}</td>
+        <td>{{ pc.ram }}</td>
+        <td>{{ pc.battery }}</td>
+        <td>{{ pc.ip }}</td>
+        <td>{{ pc.brand }}</td>
+        <td>{{ pc.last_seen }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color:red;">❌ No PC data received yet.</p>
+{% endif %}
+
+
+
+
+

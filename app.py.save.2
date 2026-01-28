@@ -1,0 +1,73 @@
+from flask import Flask, render_template, request, redirect, session
+import sqlite3
+import secrets
+
+
+app = Flask(__name__)
+app.secret_key = "simple-secret"
+
+def generate_api_key():
+    return secrets.token_hex(24)
+
+def get_db():
+    return sqlite3.connect("database.db")
+
+@app.route("/")
+def home():
+    return render_template("home.html")
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        db = get_db()
+        cur = db.cursor()
+
+        cur.execute("SELECT id FROM users WHERE email=?", (email,))
+        if cur.fetchone():
+            return "Email already registered"
+
+        cur.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, password))
+        db.commit()
+        db.close()
+
+        session["user"] = email
+        return redirect("/dashboard")
+
+    return render_template("register.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT id FROM users WHERE email=? AND password=?", (email, password))
+        user = cur.fetchone()
+        db.close()
+
+        if user:
+            session["user"] = email
+            return redirect("/dashboard")
+        else:
+            return "Invalid email or password"
+
+    return render_template("login.html")
+
+@app.route("/dashboard")
+def dashboard():
+    if "user" not in session:
+        return redirect("/login")
+    return render_template("dashboard.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
+if __name__ == "__main__":
+    app.run(debug=True)
